@@ -7,12 +7,25 @@ interface GameState {
   firstCard: Card | null;
   secondCard: Card | null;
   moves: number;
+  matches: number;
+  totalPairs: number;
   gameEnded: boolean;
 
-  // actions
+  time: number;
+  isTimerRunning: boolean;
+  timerInterval: number | null;
+
+  theme: "light" | "dark";
+  toggleTheme: () => void;
+
   setCards: (cards: Card[]) => void;
   flipCard: (cardId: number) => void;
-  resetGame: () => void;
+
+  startTimer: () => void;
+  stopTimer: () => void;
+  resetTimer: () => void;
+
+  resetGameStore: () => void;
 }
 
 export const useGameStore = create<GameState>((set, get) => ({
@@ -20,50 +33,168 @@ export const useGameStore = create<GameState>((set, get) => ({
   firstCard: null,
   secondCard: null,
   moves: 0,
+  matches: 0,
+  totalPairs: 0,
   gameEnded: false,
 
-  setCards: (cards) => set({ cards: shuffle(cards), firstCard: null, secondCard: null, moves: 0, gameEnded: false }),
+  time: 0,
+  isTimerRunning: false,
+  timerInterval: null,
+
+  theme: "light",
+
+  toggleTheme: () => {
+    const next = get().theme === "light" ? "dark" : "light";
+    set({ theme: next });
+    document.documentElement.classList.toggle("dark", next === "dark");
+  },
+
+  // ---------------------------------------------------------
+  // TIMER
+  // ---------------------------------------------------------
+
+  startTimer: () => {
+    const { timerInterval } = get();
+    if (timerInterval) return; // جلوگیری از چند برابر شدن تایمر
+
+    const interval = window.setInterval(() => {
+      set(state => ({ time: state.time + 1 }));
+    }, 1000);
+
+    set({ timerInterval: interval, isTimerRunning: true });
+  },
+
+  stopTimer: () => {
+    const { timerInterval } = get();
+    if (!timerInterval) return;
+
+    clearInterval(timerInterval);
+    set({ timerInterval: null, isTimerRunning: false });
+  },
+
+  resetTimer: () => {
+    const { stopTimer } = get();
+    stopTimer();
+    set({ time: 0 });
+  },
+
+  // ---------------------------------------------------------
+  // SET CARDS (شروع بازی جدید)
+  // ---------------------------------------------------------
+
+  setCards: (cards) =>
+    set({
+      cards: shuffle(cards),
+      totalPairs: cards.length / 2,
+      firstCard: null,
+      secondCard: null,
+      moves: 0,
+      matches: 0,
+      gameEnded: false,
+      time: 0,
+      isTimerRunning: false,
+      timerInterval: null
+    }),
+
+  // ---------------------------------------------------------
+  // FLIP CARD
+  // ---------------------------------------------------------
 
   flipCard: (cardId) => {
-    const { cards, firstCard, secondCard, moves } = get();
-    const cardIndex = cards.findIndex(c => c.id === cardId);
-    if (cardIndex === -1) return;
+    const {
+      cards,
+      firstCard,
+      secondCard,
+      moves,
+      matches,
+      totalPairs,
+      startTimer,
+      stopTimer
+    } = get();
 
-    const card = cards[cardIndex];
-    if (card.isFlipped || card.isMatched) return; // نمی‌خوایم کارت دوباره flip شه
+    // شروع تایمر در اولین حرکت واقعی
+    if (moves === 0 && !firstCard && !secondCard) {
+      startTimer();
+    }
 
-    const updatedCards = [...cards];
-    updatedCards[cardIndex] = { ...card, isFlipped: true };
+    const index = cards.findIndex(c => c.id === cardId);
+    if (index === -1) return;
+
+    const card = cards[index];
+    if (card.isFlipped || card.isMatched) return;
+
+    const updated = [...cards];
+    updated[index] = { ...card, isFlipped: true };
 
     if (!firstCard) {
-      set({ cards: updatedCards, firstCard: updatedCards[cardIndex] });
-    } else if (!secondCard) {
-      set({ cards: updatedCards, secondCard: updatedCards[cardIndex], moves: moves + 1 });
+      set({ cards: updated, firstCard: updated[index] });
+      return;
+    }
 
-      // بررسی match بعد از 500ms
+    if (!secondCard) {
+      set({
+        cards: updated,
+        secondCard: updated[index],
+        moves: moves + 1,
+      });
+
       setTimeout(() => {
         const { firstCard, secondCard, cards } = get();
         if (!firstCard || !secondCard) return;
 
         let newCards = [...cards];
+        let newMatches = matches;
+
         if (firstCard.icon === secondCard.icon) {
-          // کارت‌ها matched شدن
+          // Match
           newCards = newCards.map(c =>
-            c.id === firstCard.id || c.id === secondCard.id ? { ...c, isMatched: true } : c
+            c.id === firstCard.id || c.id === secondCard.id
+              ? { ...c, isMatched: true }
+              : c
           );
+          newMatches++;
         } else {
-          // کارت‌ها برمی‌گردن
+          // No match
           newCards = newCards.map(c =>
-            c.id === firstCard.id || c.id === secondCard.id ? { ...c, isFlipped: false } : c
+            c.id === firstCard.id || c.id === secondCard.id
+              ? { ...c, isFlipped: false }
+              : c
           );
         }
 
-        const gameEnded = newCards.every(c => c.isMatched);
+        const finished = newMatches === totalPairs;
+        if (finished) stopTimer();
 
-        set({ cards: newCards, firstCard: null, secondCard: null, gameEnded });
+        set({
+          cards: newCards,
+          firstCard: null,
+          secondCard: null,
+          matches: newMatches,
+          gameEnded: finished
+        });
       }, 500);
     }
   },
 
-  resetGame: () => set({ cards: [], firstCard: null, secondCard: null, moves: 0, gameEnded: false }),
+  // ---------------------------------------------------------
+  // RESET ALL (برای بازی جدید)
+  // ---------------------------------------------------------
+
+  resetGameStore: () => {
+    const { stopTimer } = get();
+    stopTimer();
+
+    set({
+      cards: [],
+      firstCard: null,
+      secondCard: null,
+      moves: 0,
+      matches: 0,
+      totalPairs: 0,
+      gameEnded: false,
+      time: 0,
+      isTimerRunning: false,
+      timerInterval: null
+    });
+  }
 }));
