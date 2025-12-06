@@ -3,84 +3,100 @@ import type { Card } from "../types/card";
 import { shuffle } from "../utils/shuffle";
 
 interface GameState {
+  // UI theme
+  uiTheme: "light" | "dark";
+  toggleUITheme: () => void;
+
+  // Card theme
+  cardTheme: "emoji" | "icons" | "patterns";
+  setCardTheme: (theme: "emoji" | "icons" | "patterns") => void;
+
+  // Grid
+  gridSize: number;
+  setGridSize: (size: number) => void;
+
+  // Game flow
+  gameStarted: boolean;
+  gameEnded: boolean;
+  startGame: () => void;
+  endGame: () => void;
+  resetGameStore: () => void;
+
+  // Cards
   cards: Card[];
+  setCards: (cards: Card[]) => void;
+
+  // Matching system
   firstCard: Card | null;
   secondCard: Card | null;
   moves: number;
   matches: number;
   totalPairs: number;
-  gameEnded: boolean;
+  flipCard: (id: number) => void;
 
+  // Timer
   time: number;
   isTimerRunning: boolean;
   timerInterval: number | null;
-
-  theme: "light" | "dark";
-  toggleTheme: () => void;
-
-  setCards: (cards: Card[]) => void;
-  flipCard: (cardId: number) => void;
-
   startTimer: () => void;
   stopTimer: () => void;
   resetTimer: () => void;
-
-  resetGameStore: () => void;
 }
 
 export const useGameStore = create<GameState>((set, get) => ({
+  // ---------------------------------------------------------
+  // UI theme (dark/light)
+  // ---------------------------------------------------------
+  uiTheme: "light",
+
+  toggleUITheme: () => {
+    const next = get().uiTheme === "light" ? "dark" : "light";
+    set({ uiTheme: next });
+    document.documentElement.classList.toggle("dark", next === "dark");
+  },
+
+  // ---------------------------------------------------------
+  // CARD theme selection
+  // ---------------------------------------------------------
+  cardTheme: "emoji",
+
+  setCardTheme: (theme) => {
+    set({ cardTheme: theme });
+    get().resetGameStore();
+  },
+
+  // ---------------------------------------------------------
+  // GRID
+  // ---------------------------------------------------------
+  gridSize: 4,
+
+  setGridSize: (size) => {
+    set({ gridSize: size });
+    get().resetGameStore();
+  },
+
+  // ---------------------------------------------------------
+  // GAME FLOW
+  // ---------------------------------------------------------
+  gameStarted: false,
+  gameEnded: false,
+
+  startGame: () => set({ gameStarted: true, gameEnded: false }),
+
+  endGame: () => {
+    set({ gameEnded: true });
+    get().stopTimer();
+  },
+
+  // ---------------------------------------------------------
+  // CARDS
+  // ---------------------------------------------------------
   cards: [],
   firstCard: null,
   secondCard: null,
   moves: 0,
   matches: 0,
   totalPairs: 0,
-  gameEnded: false,
-
-  time: 0,
-  isTimerRunning: false,
-  timerInterval: null,
-
-  theme: "light",
-
-  toggleTheme: () => {
-    const next = get().theme === "light" ? "dark" : "light";
-    set({ theme: next });
-    document.documentElement.classList.toggle("dark", next === "dark");
-  },
-
-  // ---------------------------------------------------------
-  // TIMER
-  // ---------------------------------------------------------
-
-  startTimer: () => {
-    const { timerInterval } = get();
-    if (timerInterval) return; // جلوگیری از چند برابر شدن تایمر
-
-    const interval = window.setInterval(() => {
-      set(state => ({ time: state.time + 1 }));
-    }, 1000);
-
-    set({ timerInterval: interval, isTimerRunning: true });
-  },
-
-  stopTimer: () => {
-    const { timerInterval } = get();
-    if (!timerInterval) return;
-
-    clearInterval(timerInterval);
-    set({ timerInterval: null, isTimerRunning: false });
-  },
-
-  resetTimer: () => {
-    const { stopTimer } = get();
-    stopTimer();
-    set({ time: 0 });
-  },
-
-  // ---------------------------------------------------------
-  // SET CARDS (شروع بازی جدید)
-  // ---------------------------------------------------------
 
   setCards: (cards) =>
     set({
@@ -91,16 +107,12 @@ export const useGameStore = create<GameState>((set, get) => ({
       moves: 0,
       matches: 0,
       gameEnded: false,
-      time: 0,
-      isTimerRunning: false,
-      timerInterval: null
     }),
 
   // ---------------------------------------------------------
-  // FLIP CARD
+  // FLIP
   // ---------------------------------------------------------
-
-  flipCard: (cardId) => {
+  flipCard: (id) => {
     const {
       cards,
       firstCard,
@@ -109,15 +121,14 @@ export const useGameStore = create<GameState>((set, get) => ({
       matches,
       totalPairs,
       startTimer,
-      stopTimer
+      endGame
     } = get();
 
-    // شروع تایمر در اولین حرکت واقعی
-    if (moves === 0 && !firstCard && !secondCard) {
-      startTimer();
-    }
+    if (!get().gameStarted) return;
 
-    const index = cards.findIndex(c => c.id === cardId);
+    if (moves === 0 && !firstCard) startTimer();
+
+    const index = cards.findIndex(c => c.id === id);
     if (index === -1) return;
 
     const card = cards[index];
@@ -126,11 +137,13 @@ export const useGameStore = create<GameState>((set, get) => ({
     const updated = [...cards];
     updated[index] = { ...card, isFlipped: true };
 
+    // first
     if (!firstCard) {
       set({ cards: updated, firstCard: updated[index] });
       return;
     }
 
+    // second
     if (!secondCard) {
       set({
         cards: updated,
@@ -146,7 +159,6 @@ export const useGameStore = create<GameState>((set, get) => ({
         let newMatches = matches;
 
         if (firstCard.icon === secondCard.icon) {
-          // Match
           newCards = newCards.map(c =>
             c.id === firstCard.id || c.id === secondCard.id
               ? { ...c, isMatched: true }
@@ -154,7 +166,6 @@ export const useGameStore = create<GameState>((set, get) => ({
           );
           newMatches++;
         } else {
-          // No match
           newCards = newCards.map(c =>
             c.id === firstCard.id || c.id === secondCard.id
               ? { ...c, isFlipped: false }
@@ -163,38 +174,66 @@ export const useGameStore = create<GameState>((set, get) => ({
         }
 
         const finished = newMatches === totalPairs;
-        if (finished) stopTimer();
+        if (finished) endGame();
 
         set({
           cards: newCards,
           firstCard: null,
           secondCard: null,
           matches: newMatches,
-          gameEnded: finished
         });
       }, 500);
     }
   },
 
   // ---------------------------------------------------------
-  // RESET ALL (برای بازی جدید)
+  // TIMER
   // ---------------------------------------------------------
+  time: 0,
+  isTimerRunning: false,
+  timerInterval: null,
 
+  startTimer: () => {
+    if (get().timerInterval) return;
+
+    const interval = window.setInterval(() => {
+      set(state => ({ time: state.time + 1 }));
+    }, 1000);
+
+    set({ timerInterval: interval, isTimerRunning: true });
+  },
+
+  stopTimer: () => {
+    const timer = get().timerInterval;
+    if (!timer) return;
+
+    clearInterval(timer);
+    set({ timerInterval: null, isTimerRunning: false });
+  },
+
+  resetTimer: () => {
+    get().stopTimer();
+    set({ time: 0 });
+  },
+
+  // ---------------------------------------------------------
+  // RESET
+  // ---------------------------------------------------------
   resetGameStore: () => {
-    const { stopTimer } = get();
-    stopTimer();
+    get().stopTimer();
 
     set({
+      gameStarted: false,
+      gameEnded: false,
       cards: [],
       firstCard: null,
       secondCard: null,
       moves: 0,
       matches: 0,
       totalPairs: 0,
-      gameEnded: false,
       time: 0,
       isTimerRunning: false,
-      timerInterval: null
+      timerInterval: null,
     });
   }
 }));

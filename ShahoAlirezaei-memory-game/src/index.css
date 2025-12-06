@@ -18,3 +18,30 @@
   transform: rotateY(180deg);
 }
 
+
+/*  */
+/* Glass effect */
+.glass-modal {
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+}
+
+/* Neon gradient button */
+.bg-neon-gradient {
+  background: linear-gradient(135deg, #00f7ff, #00d1ff, #7a5cff, #d252ff);
+}
+
+/* Neon shadow */
+.shadow-neon {
+  box-shadow: 0 0 15px rgba(0, 255, 255, 0.7),
+              0 0 30px rgba(122, 92, 255, 0.5);
+}
+
+select option {
+  background-color: #111;
+  color: white;
+}
+
